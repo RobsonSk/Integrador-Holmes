@@ -1,0 +1,27 @@
+CREATE TABLE AD_FAT_HOLMES (
+    STATUS_LANC_HOLMES VARCHAR2(1) DEFAULT 'N' NOT NULL,
+    REQUISICAO         VARCHAR2(100),
+    EMPRESA         NUMBER NOT NULL,
+    REVENDA         NUMBER NOT NULL,
+    ESTABELECIMENTO VARCHAR2(14),
+    VEICULO         VARCHAR2(20),
+    NOME_CLIENTE    VARCHAR2(255),
+    CNPJ_CPF        VARCHAR2(20),
+    EMAIL           VARCHAR2(255),
+    TELEFONE        VARCHAR2(20),
+    TIPO_PESSOA     VARCHAR2(20),
+    PROPOSTA        NUMBER NOT NULL,
+    CHASSI          VARCHAR2(255),
+    USADO_TROCA     VARCHAR2(1),
+    FORMA_PAGAMENTO VARCHAR2(50),
+    CORTESIA        VARCHAR2(50),
+    OBSERVACAO      VARCHAR2(4000)
+);
+
+/*
+COMMENT ON COLUMN AD_FAT_HOLMES.STATUS_LANC_HOLMES IS 'Status do lançamento no holmes, default N para enviar após inserção';
+COMMENT ON COLUMN AD_FAT_HOLMES.ESTABELECIMENTO IS 'CNPJ da empresa/revenda para de-para com ID do holmes';
+COMMENT ON COLUMN AD_FAT_HOLMES.REQUISICAO is 'Numero da requisicao gerada no envio para o Holmes (interna somente)';
+COMMENT ON COLUMN AD_FAT_HOLMES.USADO_TROCA IS 'Verifica cond pagto 140, se tem = S ';
+COMMENT ON COLUMN AD_FAT_HOLMES.OBSERVACAO IS 'Observação da proposta, convertida de CLOB pra txt';
+*/
