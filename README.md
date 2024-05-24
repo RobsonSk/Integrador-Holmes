@@ -83,7 +83,7 @@ Para iniciar o aplicativo web é utilizado o modulo PM2:
 
 ## Licença
 
-Este projeto está licenciado sob a licença MIT - veja o arquivo [LICENSE](LICENCE.md) para mais detalhes.
+Este projeto está licenciado sob a licença MIT - veja o arquivo [LICENSE](LICENSE.md) para mais detalhes.
 
 ## Contato
 
