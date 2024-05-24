@@ -65,21 +65,21 @@ Para iniciar o aplicativo web é utilizado o modulo PM2:
 ## TO-DO
 ## Fluxo Pgto - Despesas
 
-- **NF de Origem: Quando se tratar de frete, verificar a NF de origem no Apollo e ajustar a query conforme necessário.
-- **Conta / Descrição: Atualizar o nome no Holmes para refletir corretamente como uma descrição livre, dado que já existe uma observação.
-- **Chassi: Determinar onde esses dados estão armazenados no Apollo.
-- **Tipo de Pagamento: Alterar para tipo de transação no Holmes.
+- NF de Origem: Quando se tratar de frete, verificar a NF de origem no Apollo e ajustar a query conforme necessário.
+- Conta / Descrição: Atualizar o nome no Holmes para refletir corretamente como uma descrição livre, dado que já existe uma observação.
+- Chassi: Determinar onde esses dados estão armazenados no Apollo.
+- Tipo de Pagamento: Alterar para tipo de transação no Holmes.
 
 ## Fluxo Pgto RH - (Pgto PJ)
 
-- **Verificar transações para criar uma rota com os dados.
+- Verificar transações para criar uma rota com os dados.
 
 ## Fluxo Faturamento
 
-- **Divisão por Tipo de Veículo: Determinar como dividir pelo tipo de veículo (seminovo, novo, frotista).
-- **Formas de Pagamento: Verificar e mapear formas de pagamento entre Apollo e Holmes.
-- **Cortesia: Incluir cortesia no fluxo.
-- **Falta de Dados do Cliente: Determinar como lidar com casos em que faltam dados do cliente.
+- Divisão por Tipo de Veículo: Determinar como dividir pelo tipo de veículo (seminovo, novo, frotista).
+- Formas de Pagamento: Verificar e mapear formas de pagamento entre Apollo e Holmes.
+- Cortesia: Incluir cortesia no fluxo.
+- Falta de Dados do Cliente: Determinar como lidar com casos em que faltam dados do cliente.
 
 ## Licença
 
