@@ -1,33 +1,55 @@
-CREATE TABLE AD_DESP_HOLMES (
-  STATUS_LANC_HOLMES VARCHAR2(1) DEFAULT 'N' NOT NULL,
-  EMPRESA NUMBER(2) NOT NULL,
-  REVENDA NUMBER(2) NOT NULL,
-  ESTABELECIMENTO VARCHAR2(14) NOT NULL,
-  TIPO_TRANSACAO VARCHAR2(4),
-  FORNECEDOR VARCHAR2(70) NOT NULL,
-  CNPJ_CPF VARCHAR2(17),
-  DEPARTAMENTO NUMBER(4),
-  REQUISICAO VARCHAR2(100),
-  CHASSI_PLACA VARCHAR2(300),
-  NUMERO_NOTA_FISCAL NUMBER(38) NOT NULL,
-  DATA_EMISSAO DATE NOT NULL,
-  DATA_VENCIMENTO DATE NOT NULL,
-  CHAVE_NFE VARCHAR2(300),
-  NOTA_ORIGEM NUMBER(38),
-  CONDICAO_PGTO NUMBER(4),
-  COND_PGTO_DESC VARCHAR2(100),
-  QTDE_PARC NUMBER(2),
-  VALOR NUMBER(17, 2) NOT NULL,
-  OBSERVACAO VARCHAR2(3000),
-  PDF VARCHAR2(3000),
-  PASTA_BOLETO VARCHAR2(3000),
-  DATA_LANC_HOLMES DATE
+-- Create table
+create table AD_DESP_HOLMES
+(
+  STATUS_LANC_HOLMES VARCHAR2(1) default 'N' not null,
+  EMPRESA            NUMBER(6) not null,
+  REVENDA            NUMBER(2) not null,
+  ESTABELECIMENTO    VARCHAR2(14),
+  TIPO_TRANSACAO     VARCHAR2(4),
+  FORNECEDOR         VARCHAR2(70) not null,
+  CNPJ_CPF           VARCHAR2(17),
+  DEPARTAMENTO       NUMBER(4),
+  REQUISICAO         VARCHAR2(100),
+  CHASSI_PLACA       VARCHAR2(4000),
+  NUMERO_NOTA_FISCAL NUMBER(12) not null,
+  DATA_EMISSAO       DATE not null,
+  DATA_VENCIMENTO    DATE not null,
+  CHAVE_NFE          VARCHAR2(300),
+  NOTA_ORIGEM        VARCHAR2(4000),
+  CONDICAO_PGTO      NUMBER(4),
+  COND_PGTO_DESC     VARCHAR2(100),
+  QTDE_PARC          NUMBER(2),
+  VALOR              NUMBER(17,2) not null,
+  OBSERVACAO         VARCHAR2(3000),
+  PDF                VARCHAR2(3000),
+  PASTA_BOLETO       VARCHAR2(3000),
+  DATA_LANC_HOLMES   DATE,
+  SERIE_NOTA_FISCAL  VARCHAR2(5),
+  CONTADOR           NUMBER(5),
+  CLIENTE            NUMBER(10),
+  RESPONSAVEL        VARCHAR2(50)
 )
-  /*
-  COMMENT ON COLUMN AD_DESP_HOLMES.STATUS_LANC_HOLMES IS 'Status do lançamento no holmes, default N para enviar após inserção';
-  COMMENT ON COLUMN AD_DESP_HOLMES.ESTABELECIMENTO IS 'CNPJ da empresa/revenda para de-para com ID do holmes';
-  COMMENT ON COLUMN AD_DESP_HOLMES.REQUISICAO IS 'Numero da requisicao gerada no envio para o Holmes (interna somente)';
-  COMMENT ON COLUMN AD_DESP_HOLMES.CHASSI_PLACA IS 'para casos que precise ter registro de despesa para veiculo';
-  COMMENT ON COLUMN AD_DESP_HOLMES.NOTA_ORIGEM IS 'Somente para CTE, necessário verificar transação específica';
-  COMMENT ON COLUMN AD_DESP_HOLMES.OBSERVACAO IS 'Observação da descrição livre. Para transações P colocar Peças e para V colocar veiculos';
-  */
+
+-- Add comments to the columns 
+comment on column AD_DESP_HOLMES.STATUS_LANC_HOLMES
+  is 'Status do lançamento no holmes, default N para enviar após inserção';
+comment on column AD_DESP_HOLMES.ESTABELECIMENTO
+  is 'CNPJ da empresa/revenda para de-para com ID do holmes';
+comment on column AD_DESP_HOLMES.TIPO_TRANSACAO
+  is 'Tipo de transação para de-para no Holmes';
+comment on column AD_DESP_HOLMES.REQUISICAO
+  is 'Numero da requisicao gerada no envio para o Holmes (interna somente)';
+comment on column AD_DESP_HOLMES.CHASSI_PLACA
+  is 'para casos que precise ter registro de despesa para veiculo';
+comment on column AD_DESP_HOLMES.NOTA_ORIGEM
+  is 'Somente para CTE, necessário verificar transação específica';
+comment on column AD_DESP_HOLMES.OBSERVACAO
+  is 'Observação da descrição livre.';
+comment on column AD_DESP_HOLMES.PDF
+  is 'Nome do arquivo PDF salvo pelo Apollo';
+comment on column AD_DESP_HOLMES.PASTA_BOLETO
+  is 'Caminho do arquivo PDF salvo pelo Apollo';
+comment on column AD_DESP_HOLMES.DATA_LANC_HOLMES
+  is 'Data de envio para o Holmes';
+comment on column AD_DESP_HOLMES.CLIENTE
+  is 'Cliente para validação do financeiro';

@@ -3,11 +3,11 @@
     <title><%= title %></title>
   </head>
   <body>
-    <p>Envio Manual de Despesas</p>
+    <p>Envio Manual Pagamento RH</p>
 
     <% if (!message && (!parsedResponses || parsedResponses.length === 0)) { %>
-    <form action="/despesas" method="post">
-      <button type="submit">Enviar despesas</button>
+    <form action="/pgtorh" method="post">
+      <button type="submit">Enviar Pagamento RH</button>
     </form>
     <% } else { %> <% if (message) { %>
     <p><%= message %></p>

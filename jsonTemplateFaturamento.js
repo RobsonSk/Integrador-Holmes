@@ -1,5 +1,5 @@
 jsonTemplateFaturamento = {
-        "start_event": "Event_009bbst",
+        "start_event": "Event_0txg0fy",
         "property_values": [
             {
                 "id": "2874ab30-7fef-11ee-8f2d-f30c6dbe32ac",
@@ -57,19 +57,19 @@ jsonTemplateFaturamento = {
                 "text": "FORMA_PGTO"
             },
             {
-                "id": "5e48cfa0-7ff1-11ee-8f2d-f30c6dbe32ac",
-                "value": "cortesia",
-                "text": "CORTESIA"
-            },
-            {
                 "id": "3aea3bb0-7fed-11ee-adf4-792e186c1fd2",
                 "value": "observacao",
                 "name": "OBSERVACAO"
+            },
+            {
+                "id": "da763ea0-3ac7-11ef-ac00-3577e54728c1",
+                "value": "responsavel",
+                "name": "responsavel"
             }
         ],
         "whats": "",
         "documents": [],
-        "test": true
+        "test": false
     };
 
 module.exports = jsonTemplateFaturamento;

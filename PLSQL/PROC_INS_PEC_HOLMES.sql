@@ -1,4 +1,4 @@
-CREATE OR REPLACE PROCEDURE PROC_INS_DESP_HOLMES IS
+CREATE OR REPLACE PROCEDURE PROC_INS_PEC_HOLMES IS
   CURSOR c_data IS
     SELECT EMPRESA,
            REVENDA,
@@ -9,9 +9,7 @@ CREATE OR REPLACE PROCEDURE PROC_INS_DESP_HOLMES IS
            CLIENTE
       FROM FAT_MOVIMENTO_CAPA
      WHERE DTA_PROCESSAMENTO >= TRUNC(SYSDATE) - 2
-       AND TIPO_TRANSACAO IN
-           ('D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08', 'D09',
-            'D10', 'D11', 'D12', 'D14', 'D27');
+       AND TIPO_TRANSACAO IN ('P01');
 
   V_EMPRESA            FAT_MOVIMENTO_CAPA.EMPRESA%TYPE;
   V_REVENDA            FAT_MOVIMENTO_CAPA.REVENDA%TYPE;
@@ -21,7 +19,7 @@ CREATE OR REPLACE PROCEDURE PROC_INS_DESP_HOLMES IS
   V_TIPO_TRANSACAO     FAT_MOVIMENTO_CAPA.TIPO_TRANSACAO%TYPE;
   V_COUNT              NUMBER;
   V_CLIENTE            FAT_MOVIMENTO_CAPA.CLIENTE%TYPE;
-  
+
   V_ESTABELECIMENTO VARCHAR2(14);
   P_FORNECEDOR      VARCHAR2(70);
   P_CNPJ_CPF        VARCHAR2(17);
@@ -48,9 +46,9 @@ BEGIN
     FETCH c_data
       INTO V_EMPRESA, V_REVENDA, V_NUMERO_NOTA_FISCAL, V_SERIE_NOTA_FISCAL, V_CONTADOR, V_TIPO_TRANSACAO, V_CLIENTE;
     EXIT WHEN c_data%NOTFOUND;
-  
+
     BEGIN
-    
+
       SELECT COUNT(*)
         INTO V_COUNT
         FROM AD_DESP_HOLMES
@@ -61,7 +59,7 @@ BEGIN
          AND CONTADOR = V_CONTADOR
          AND TIPO_TRANSACAO = V_TIPO_TRANSACAO
          AND CLIENTE = V_CLIENTE;
-    
+
       IF V_COUNT = 0 THEN
         -- Busca dados
         SELECT FMC.EMPRESA,
@@ -82,12 +80,7 @@ BEGIN
                   NULL
                END AS CNPJ_CPF,
                FMC.DEPARTAMENTO,
-               CASE
-                 WHEN REGEXP_LIKE(FMDL.DESCRICAO, 'CHASSI: [A-Za-z0-9]+') THEN
-                  REGEXP_SUBSTR(FMDL.DESCRICAO, 'CHASSI: [A-Za-z0-9]+', 1, 1)
-                 ELSE
-                  'SEM CHASSI'
-               END AS CHASSI_PLACA,
+               'SEM CHASSI' AS CHASSI_PLACA,
                FMC.NUMERO_NOTA_FISCAL AS NUMERO_DA_NOTA,
                TRUNC(FMC.DTA_DOCUMENTO) AS DATA_EMISSAO,
                CASE
@@ -96,15 +89,10 @@ BEGIN
                  ELSE
                   FMC.NFE_CHAVE_ACESSO
                END AS CHAVE_NFE,
-               CASE
-                   WHEN REGEXP_LIKE(FMDL.DESCRICAO, 'NF:\s?\d+') THEN
-                   REGEXP_SUBSTR(FMDL.DESCRICAO, 'NF:\s?\d+', 1, 1)
-                 ELSE
-                  'NOTA ORIGEM'
-               END AS NOTA_ORIGEM,
-               FMDL.DESCRICAO AS OBSERVACAO,
+               'NOTA ORIGEM' AS NOTA_ORIGEM,
+               'NOTA DE PEÇAS' AS OBSERVACAO,
                FMC.NOME_ARQ_DANFE AS PDF,
-               'C:\Apollo\PDF\'|| FMC.Empresa || '-' || FMC.REVENDA || '\' AS PASTA_BOLETO,
+               'C:\Apollo\PDF\' || FMC.Empresa || '-' || FMC.REVENDA || '\' AS PASTA_BOLETO,
                FMC.SERIE_NOTA_FISCAL,
                FMC.CONTADOR,
                FMC.CLIENTE,
@@ -128,22 +116,14 @@ BEGIN
                V_CONTADOR,
                V_CLIENTE,
                P_USUARIO
-          FROM FAT_MOVIMENTO_CAPA       FMC,
-               FAT_CLIENTE              FC,
-               FAT_MOVIMENTO_DESC_LIVRE FMDL,
-               GER_DEPARTAMENTO         GD,
-               GER_REVENDA              GR,
-               GER_USUARIO              GU
+          FROM FAT_MOVIMENTO_CAPA FMC,
+               FAT_CLIENTE        FC,
+               GER_DEPARTAMENTO   GD,
+               GER_REVENDA        GR,
+               GER_USUARIO        GU
          WHERE FMC.CLIENTE = FC.CLIENTE
            AND FMC.EMPRESA = GR.EMPRESA
            AND FMC.REVENDA = GR.REVENDA
-           AND FMC.NUMERO_NOTA_FISCAL = FMDL.NUMERO_NOTA_FISCAL
-           AND FMC.SERIE_NOTA_FISCAL = FMDL.SERIE_NOTA_FISCAL
-           AND FMC.EMPRESA = FMDL.EMPRESA
-           AND FMC.REVENDA = FMDL.REVENDA
-           AND FMC.CONTADOR = FMDL.CONTADOR
-           AND FMC.TIPO_TRANSACAO = FMDL.TIPO_TRANSACAO
-           AND FMDL.ORDEM <= 1
            AND FMC.DEPARTAMENTO = GD.DEPARTAMENTO
            AND FMC.EMPRESA = GD.EMPRESA
            AND FMC.REVENDA = GD.REVENDA
@@ -155,7 +135,7 @@ BEGIN
            AND FMC.CONTADOR = V_CONTADOR
            AND FMC.TIPO_TRANSACAO = V_TIPO_TRANSACAO
            AND FMC.CLIENTE = V_CLIENTE;
-      
+
         SELECT SUM(F.VAL_TITULO)
           INTO P_VALOR
           FROM FIN_TITULO F, FAT_MOVIMENTO_CAPA FC
@@ -209,7 +189,7 @@ BEGIN
            AND F.CLIENTE = V_CLIENTE
            AND ROWNUM <= 1
          ORDER BY F.DUPLICATA;
-      
+
         -- INSERE DADOS NA TABELA AD_HOLMES_DESP_PGTO PARA ENVIO VIA API
         INSERT INTO AD_DESP_HOLMES
           (STATUS_LANC_HOLMES,
@@ -263,90 +243,86 @@ BEGIN
            V_CONTADOR,
            V_CLIENTE,
            P_USUARIO);
-      
+
         COMMIT;
       END IF;
     EXCEPTION
       WHEN NO_DATA_FOUND THEN
         v_code := SQLCODE;
         v_errm := SUBSTR(SQLERRM, 1, 255);
-    BEGIN
-      SELECT 1
-        INTO V_COUNT
-        FROM AD_LOG_ERROR_HOLMES
-       WHERE EMPRESA = V_EMPRESA
-         AND REVENDA = V_REVENDA
-         AND NUMERO_NOTA_FISCAL = V_NUMERO_NOTA_FISCAL
-         AND SERIE_NOTA_FISCAL = V_SERIE_NOTA_FISCAL
-         AND CONTADOR = V_CONTADOR
-         AND TIPO_TRANSACAO = V_TIPO_TRANSACAO
-         AND ERROR = v_code || ':' || v_errm;
-         
- EXCEPTION
-      WHEN NO_DATA_FOUND THEN
-          INSERT INTO AD_LOG_ERROR_HOLMES
-            (EMPRESA,
-             REVENDA,
-             NUMERO_NOTA_FISCAL,
-             SERIE_NOTA_FISCAL,
-             CONTADOR,
-             TIPO_TRANSACAO,
-             ERROR,
-             DATA_HORA,
-             CLIENTE)
-          VALUES
-            (V_EMPRESA,
-             V_REVENDA,
-             V_NUMERO_NOTA_FISCAL,
-             V_SERIE_NOTA_FISCAL,
-             V_CONTADOR,
-             V_TIPO_TRANSACAO,
-             v_code || ':' || v_errm,
-             SYSDATE,
-             V_CLIENTE);
+        BEGIN
+          SELECT 1
+            INTO V_COUNT
+            FROM AD_LOG_ERROR_HOLMES
+           WHERE EMPRESA = V_EMPRESA
+             AND REVENDA = V_REVENDA
+             AND NUMERO_NOTA_FISCAL = V_NUMERO_NOTA_FISCAL
+             AND SERIE_NOTA_FISCAL = V_SERIE_NOTA_FISCAL
+             AND CONTADOR = V_CONTADOR
+             AND TIPO_TRANSACAO = V_TIPO_TRANSACAO
+             AND ERROR = v_code || ':' || v_errm;
+
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+            INSERT INTO AD_LOG_ERROR_HOLMES
+              (EMPRESA,
+               REVENDA,
+               NUMERO_NOTA_FISCAL,
+               SERIE_NOTA_FISCAL,
+               CONTADOR,
+               TIPO_TRANSACAO,
+               ERROR,
+               DATA_HORA)
+            VALUES
+              (V_EMPRESA,
+               V_REVENDA,
+               V_NUMERO_NOTA_FISCAL,
+               V_SERIE_NOTA_FISCAL,
+               V_CONTADOR,
+               V_TIPO_TRANSACAO,
+               v_code || ':' || v_errm,
+               SYSDATE);
         END;
-        
+
       WHEN OTHERS THEN
         v_code := SQLCODE;
         v_errm := SUBSTR(SQLERRM, 1, 255);
-        
-        BEGIN
-      SELECT 1
-        INTO V_COUNT
-        FROM AD_LOG_ERROR_HOLMES
-       WHERE EMPRESA = V_EMPRESA
-         AND REVENDA = V_REVENDA
-         AND NUMERO_NOTA_FISCAL = V_NUMERO_NOTA_FISCAL
-         AND SERIE_NOTA_FISCAL = V_SERIE_NOTA_FISCAL
-         AND CONTADOR = V_CONTADOR
-         AND TIPO_TRANSACAO = V_TIPO_TRANSACAO
-         AND ERROR = v_code || ':' || v_errm;
 
-    EXCEPTION
-      WHEN NO_DATA_FOUND THEN
-        
-          INSERT INTO AD_LOG_ERROR_HOLMES
-            (EMPRESA,
-             REVENDA,
-             NUMERO_NOTA_FISCAL,
-             SERIE_NOTA_FISCAL,
-             CONTADOR,
-             TIPO_TRANSACAO,
-             ERROR,
-             DATA_HORA,
-             CLIENTE)
-          VALUES
-            (V_EMPRESA,
-             V_REVENDA,
-             V_NUMERO_NOTA_FISCAL,
-             V_SERIE_NOTA_FISCAL,
-             V_CONTADOR,
-             V_TIPO_TRANSACAO,
-             v_code || ':' || v_errm,
-             SYSDATE,
-             V_CLIENTE);
+        BEGIN
+          SELECT 1
+            INTO V_COUNT
+            FROM AD_LOG_ERROR_HOLMES
+           WHERE EMPRESA = V_EMPRESA
+             AND REVENDA = V_REVENDA
+             AND NUMERO_NOTA_FISCAL = V_NUMERO_NOTA_FISCAL
+             AND SERIE_NOTA_FISCAL = V_SERIE_NOTA_FISCAL
+             AND CONTADOR = V_CONTADOR
+             AND TIPO_TRANSACAO = V_TIPO_TRANSACAO
+             AND ERROR = v_code || ':' || v_errm;
+
+        EXCEPTION
+          WHEN NO_DATA_FOUND THEN
+
+            INSERT INTO AD_LOG_ERROR_HOLMES
+              (EMPRESA,
+               REVENDA,
+               NUMERO_NOTA_FISCAL,
+               SERIE_NOTA_FISCAL,
+               CONTADOR,
+               TIPO_TRANSACAO,
+               ERROR,
+               DATA_HORA)
+            VALUES
+              (V_EMPRESA,
+               V_REVENDA,
+               V_NUMERO_NOTA_FISCAL,
+               V_SERIE_NOTA_FISCAL,
+               V_CONTADOR,
+               V_TIPO_TRANSACAO,
+               v_code || ':' || v_errm,
+               SYSDATE);
         END;
     END;
   END LOOP;
   CLOSE c_data;
-END PROC_INS_DESP_HOLMES;
+END PROC_INS_PEC_HOLMES;

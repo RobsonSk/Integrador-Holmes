@@ -1,7 +1,6 @@
 const express = require('express');
 const app = express();
 const path = require("path");
-const ejs = require("ejs");
 const indexRouter = require("./route");
 const dotenv = require("dotenv");
 const bodyParser = require('body-parser');
@@ -24,7 +23,7 @@ app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
 
-cron.schedule('*/60 * * * * *', async () => {  // Executa a cada 1 minuto
+ cron.schedule('*/60 * * * * *', async () => { 
     try {
         const response = await axios.post(`http://localhost:${PORT}/despesas`, {});
         console.log('POST request successful:', response.data);
@@ -33,11 +32,20 @@ cron.schedule('*/60 * * * * *', async () => {  // Executa a cada 1 minuto
     }
 });
 
-cron.schedule('*/600 * * * * *', async () => { // Executa a cada 10 minutos
+ cron.schedule('*/60 * * * * *', async () => { 
     try {
-        const response = await axios.post(`http://localhost:${PORT}/faturamento`, {});
+        const response = await axios.post(`http://localhost:${PORT}/pgtorh`, {});
         console.log('POST request successful:', response.data);
     } catch (error) {
         console.error('Error making POST request:', error);
     }
 });
+
+cron.schedule('*/60 * * * * *', async () => { 
+     try {
+         const response = await axios.post(`http://localhost:${PORT}/faturamento`, {});
+         console.log('POST request successful:', response.data);
+     } catch (error) {
+         console.error('Error making POST request:', error);
+     }
+ });

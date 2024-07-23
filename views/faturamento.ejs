@@ -6,31 +6,23 @@
     <p>Envio Manual de Faturamento</p>
 
     <% if (!message && (!parsedResponses || parsedResponses.length === 0)) { %>
-      <form action="/faturamento" method="post">
-        <button type="submit">Enviar Faturamento</button>
-      </form>
-    <% } else { %> 
+    <form action="/faturamento" method="post">
+      <button type="submit">Enviar Faturamento</button>
+    </form>
+    <% } else { %> <% if (message) { %>
+    <p><%= message %></p>
 
-      <% if (message) { %>
-        <p><%= message %></p>
-        
-        <% if (parsedResponses && parsedResponses.length > 0) { %>
-          <% parsedResponses.forEach(row => { %>
-            <p><%= row[0] %></p>
-            <p><%= row[1] %></p>
-            <p><%= row[2] %></p>
-            <p><%= row[3] %></p>
-            <p><%= row[4] %></p>
-          <% }); %> 
-        <% } else { %>
-          <p>Nenhum resultado encontrado.</p>
-        <% } %> 
-
-      <% } else { %> 
-        <!-- Handle other cases if needed -->
-      <% } %> 
-
-    <% } %>
-
+    <% if (parsedResponses && parsedResponses.length > 0) { %> <%
+    parsedResponses.forEach(row => { %>
+    <p><%= row[0] %></p>
+    <p><%= row[1] %></p>
+    <p><%= row[2] %></p>
+    <p><%= row[3] %></p>
+    <p><%= row[4] %></p>
+    <% }); %> <% } else { %>
+    <p>Nenhum resultado encontrado.</p>
+    <% } %> <% } else { %>
+    <p>Envio concluído.</p>
+    <% } %> <% } %>
   </body>
 </html>

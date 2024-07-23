@@ -1,5 +1,5 @@
 jsonTemplateDespesas = {
-    "start_event": "Event_11cdbom",
+    "start_event": "Event_1wdisxl",
     "property_values": [
         {
             name: "Filial",
@@ -8,7 +8,7 @@ jsonTemplateDespesas = {
         },
         {
             name: "Tipo de Pagamento",
-            id: "373b2780-a4ba-11ee-95ee-f952c037c048",
+            id: "e847ff60-a4c1-11ee-95ee-f952c037c048",
             value: "tipo_pagamento",
         },
         {
@@ -42,9 +42,9 @@ jsonTemplateDespesas = {
             value: "numero_nota",
         },
         {
-            name: "Data de Vencimento",
+            name: "Data de emissao",
             id: "b3750600-a4b9-11ee-95ee-f952c037c048",
-            value: "data_vencimento",
+            value: "data_emissao",
         },
         {
             name: "Chave da NFe",
@@ -67,11 +67,6 @@ jsonTemplateDespesas = {
             value: "valor",
         },
         {
-            name: "Conta de Débito",
-            id: "5c15db80-a4bb-11ee-95ee-f952c037c048",
-            value: "conta_desc",
-        },
-        {
             name: "Quantidade de Parcelas",
             id: "6f445bc0-a4b9-11ee-95ee-f952c037c048",
             value: "qtde_parc",
@@ -81,10 +76,15 @@ jsonTemplateDespesas = {
             id: "7a4d85f0-a4b9-11ee-95ee-f952c037c048",
             value: "observacao",
         },
+		{
+            name: "responsavel",
+            id: "21a38430-3bd2-11ef-b6db-8f0f1a9a1c17",
+            value: "responsavel",
+        },
     ],
     "whats": "",
     "documents": [],
-    "test": true
+    "test": false
 };
 
 module.exports = jsonTemplateDespesas;
