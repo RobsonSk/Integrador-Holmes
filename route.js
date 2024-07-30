@@ -1,613 +1,326 @@
 const express = require("express");
 const router = express.Router();
 const dotenv = require("dotenv");
-const oracledb = require("oracledb")
+const oracledb = require("oracledb");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+
 dotenv.config();
-const axios = require("axios")
-const fs = require('fs');
 
-const nomeApp = process.env.NOME_APP
-const URL_DESPESAS = process.env.URL_DESPESAS
-const URL_TASKID_BASE = process.env.URL_PROCESSOS
-const URL_UPLOAD = process.env.URL_DOCUMENTOS
-const URL_FATURAMENTO = process.env.URL_FATURAMENTO
-const URL_PGTORH = process.env.URL_PGTORH
-const URL_USUARIO = process.env.URL_USUARIO
-const USAGE_ID_DESPESA = process.env.USAGE_ID_DESPESA
-const USAGE_ID_PGTORH = process.env.USAGE_ID_PGTORH
-const TOKEN_DESPESAS = process.env.API_KEY_DESPESAS
-const TOKEN_FATURAMENTO = process.env.API_KEY_FATURAMENTO
-const TOKEN_DESPESASRH = process.env.API_KEY_DESPESASRH
+const {
+  NOME_APP,
+  URL_DESPESAS,
+  URL_UPLOAD,
+  URL_FATURAMENTO,
+  URL_PGTORH,
+  URL_USUARIO,
+  USAGE_ID_DESPESA,
+  USAGE_ID_PGTORH,
+  API_KEY_DESPESAS: TOKEN_DESPESAS,
+  API_KEY_FATURAMENTO: TOKEN_FATURAMENTO,
+  API_KEY_DESPESASRH: TOKEN_DESPESASRH,
+  ORACLE_USER,
+  ORACLE_PASSWORD,
+  ORACLE_CONNECTION_STRING,
+  LIB_DIR,
+  QUERY_DESPESAS,
+  QUERY_FATURAMENTO,
+  QUERY_PGTORH,
+  USUARIO_INTEGRACAO
+} = process.env;
 
-async function getTask(id) {
-    if (!id) {
-        return;
-    }
-    const URL_TASKID = `${URL_TASKID_BASE}${id}`;
-    const PAYLOAD_DATA = '';
-    try {
-        const response = await axios.get(URL_TASKID, {
-            headers: {
-                'api_token': TOKEN_DESPESAS,
-                'Content-Type': 'application/json'
-            }, data: PAYLOAD_DATA
-        });
-        return { id, status: 'Successo', data: response.data };
-    } catch (error) {
-        return { id, status: 'Erro', error: error.message };
-    }
-}
-
-router.get('/', (_req, res) => {
-    res.render('index', { title: nomeApp });
-});
-
-router.get('/despesas', async (_req, res) => {
-    res.render("despesas", { title: nomeApp, message: null, parsedResponses: null });
-});
-
+const logFilePath = path.join(__dirname, "error.log");
 let isLocked = false;
 
-router.post('/despesas', async (_req, res) => {
-    if (isLocked) {
-        return res.status(429).json({ message: 'Processo em andamento' });
+const getConnection = async () => {
+  try {
+    oracledb.initOracleClient({ libDir: LIB_DIR });
+    return await oracledb.getConnection({
+      user: ORACLE_USER,
+      password: ORACLE_PASSWORD,
+      connectString: ORACLE_CONNECTION_STRING,
+    });
+  } catch (err) {
+    console.error("Falha de conexão com o BD:", err.message);
+    throw err;
+  }
+};
+
+const logErrorToFile = (errorMsg) => {
+  fs.appendFile(logFilePath, errorMsg, (err) => {
+    if (err) {
+      console.error("Falha ao logar o erro:", err.message);
     }
-    isLocked = true;
+  });
+};
 
-    let connection;
-    try {
-        oracledb.initOracleClient({
-            libDir: process.env.LIB_DIR
+const fetchResponsavelId = async (responsavel, token) => {
+  try {
+    const responsavelPayload = {
+      filters: [
+        { field: "active", type: "istrue" },
+        { field: "name", type: "match_phrase", value: responsavel },
+      ],
+      sort_by: ["name", "asc"],
+    };
+    const responsavelResponse = await axios.post(URL_USUARIO, responsavelPayload, {
+      headers: {
+        api_token: token,
+        "Content-Type": "application/json",
+      },
+    });
+    return responsavelResponse.data.users[0]?.id || USUARIO_INTEGRACAO;
+  } catch (error) {
+    console.error("Erro ao consultar o responsavel ID:", error.message);
+    return USUARIO_INTEGRACAO;
+  }
+};
+
+const processApiRequest = async (payload, url, token, connection, updateQueryParams) => {
+  try {
+    const response = await axios.post(url, payload, {
+      headers: {
+        api_token: token,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (response.status === 200) {
+      const { up_CNPJ, up_NUMERO_NOTA_FISCAL, up_VALOR, up_REQUISICAO } = updateQueryParams;
+      const updateQuery = `UPDATE AD_DESP_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = '${up_REQUISICAO}', DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND NUMERO_NOTA_FISCAL = ${up_NUMERO_NOTA_FISCAL} AND VALOR = ${up_VALOR}`;
+      await connection.execute(updateQuery);
+      await connection.commit();
+      return response.data;
+    } else {
+      const errorMsg = `Erro ao enviar: ${response.status}, Status text: ${response.statusText}\n`;
+      console.error(errorMsg);
+      logErrorToFile(errorMsg);
+      return null;
+    }
+  } catch (error) {
+    console.error("Erro ao enviar:", error.message);
+    throw error;
+  }
+};
+
+const processRequestData = async (jsonData, jsonTemplate, token, url, usageId) => {
+  const updatedJsonData = [];
+  for (const data of jsonData) {
+    const targetJson = JSON.parse(JSON.stringify(jsonTemplate));
+    targetJson.property_values.forEach((property) => {
+      if (data.hasOwnProperty(property.value)) {
+        property.value = data[property.value] || "";
+      } else {
+        console.log(`Não encontrada propriedade ${property.value}:`, data);
+      }
+    });
+
+    if (data.pdf && usageId) {
+      try {
+        const pastaBoleto = data.pasta_boleto.replace(/\s/g, "");
+        const filePath = path.join(pastaBoleto, data.pdf);
+        const fileName = data.pdf;
+
+        const fileData = await new Promise((resolve, reject) => {
+          fs.readFile(filePath, (err, data) => {
+            if (err) {
+              console.error("Error reading file:", err);
+              reject(err);
+            } else {
+              const base64_content = Buffer.from(data).toString("base64");
+              resolve(`{\n    "index": false,\n    "document": {\n"filename": "${fileName}",\n "base64_file": "${base64_content}" \n    }\n}`);
+            }
+          });
         });
 
-        const connection = await oracledb.getConnection({
-            user: process.env.ORACLE_USER,
-            password: process.env.ORACLE_PASSWORD,
-            connectString: process.env.ORACLE_CONNECTION_STRING,
-        });
-        const query = process.env.QUERY_DESPESAS;
-        const result_query = await connection.execute(query);
-        const result_query_rows = result_query.rows;
-        const jsonData = result_query_rows.map(row => {
-            const jsonObj = {};
-            result_query.metaData.forEach((meta, index) => {
-                jsonObj[meta.name.toLowerCase()] = row[index];
-            });
-            return jsonObj;
-        });
+        const config = {
+          method: "post",
+          maxBodyLength: Infinity,
+          url: url,
+          headers: {
+            api_token: token,
+            "Content-Type": "application/json",
+          },
+          data: fileData,
+        };
 
-        const jsonTemplateDespesas = require('./jsonTemplateDespesas.js');
+        const response = await axios.request(config);
 
-        const updatedJsonData = [];
-        for (const data of jsonData) {
-            const targetJson = JSON.parse(JSON.stringify(jsonTemplateDespesas));
-            targetJson.property_values.forEach(property => {
-                if (data.hasOwnProperty(property.value)) {
-                    property.value = data[property.value] || "";
-                } else {
-                    console.log(`Propriedade: ${property.value} não encontrada:`, data);
-                }
-            });
+        targetJson.documents = [{ usage_id: usageId, file_id: response.data.id }];
+		
+      } catch (error) {
+        console.error("Error uploading PDF:", error.message);
+      }
+    }
 
-            if (data.pdf) {
-                try {
-                    const pastaBoleto = data.pasta_boleto.replace(/\s/g, '');
-                    const filePath = (pastaBoleto + '\\' + data.pdf);
-                    const fileName = data.pdf;
+    const responsavelId = await fetchResponsavelId(data.responsavel, token);
+    targetJson.property_values.forEach((property) => {
+      if (property.name === "responsavel") {
+        property.value = responsavelId;
+      }
+    });
 
-                    try {
-                        const file = filePath;
-                        const fileData = await new Promise((resolve, reject) => {
-                            fs.readFile(file, (err, data) => {
-                                if (err) {
-                                    console.error('Erro ao tentar ler arquivo:', err);
-                                    reject(err);
-                                } else {
-                                    const base64_content = Buffer.from(data).toString('base64');
-                                    resolve(`{\n    "index": false,\n    "document": {\n"filename": "${fileName}",\n "base64_file": "${base64_content}" \n    }\n}`);
-                                }
-                            });
-                        });
+    updatedJsonData.push(targetJson);
+  }
+  return updatedJsonData;
+};
 
-                        const config = {
-                            method: 'post',
-                            maxBodyLength: Infinity,
-                            url: URL_UPLOAD,
-                            headers: {
-                                'api_token': TOKEN_DESPESAS,
-                                'Content-Type': 'application/json',
-                            },
-                            data: fileData
-                        };
+router.get("/", (_req, res) => {
+  res.render("index", { title: NOME_APP });
+});
 
-                        const response = await axios.request(config);
-                        const pdfId = response.data.id;
-                        targetJson.documents = [{ "usage_id": USAGE_ID_DESPESA, "file_id": pdfId }];
-                    } catch (err) {
-                        console.error(err.message);
-                    }
+router.get("/despesas", (_req, res) => {
+  res.render("despesas", { title: NOME_APP, message: null, parsedResponses: null });
+});
 
+router.post("/despesas", async (_req, res) => {
+  if (isLocked) {
+    return res.status(429).json({ message: "Processo em andamento" });
+  }
+  isLocked = true;
 
+  let connection;
+  try {
+    connection = await getConnection();
+    const result_query = await connection.execute(QUERY_DESPESAS);
+    const jsonData = result_query.rows.map((row) => {
+      const jsonObj = {};
+      result_query.metaData.forEach((meta, index) => {
+        jsonObj[meta.name.toLowerCase()] = row[index];
+      });
+      return jsonObj;
+    });
 
-                } catch (error) {
-                    console.error('Erro ao enviar PDF:', error.message);
-                }
-            }
-            const responsavel = data.responsavel;
+    const jsonTemplateDespesas = require("./jsonTemplateDespesas.js");
+    const updatedJsonData = await processRequestData(jsonData, jsonTemplateDespesas, TOKEN_DESPESAS, URL_UPLOAD, USAGE_ID_DESPESA);
 
-            const responsavelPayload = {
-                filters: [
-                    {
-                        field: "active",
-                        type: "istrue"
-                    },
-                    {
-                        field: "name",
-                        type: "match_phrase",
-                        value: responsavel,
-                        nested: false
-                    }
-                ],
-                sort_by: [
-                    "name",
-                    "asc"
-                ]
-            };
+    const apiResponses = [];
+    for (const payload of updatedJsonData) {
+      const updateQueryParams = {
+        up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ")?.value,
+        up_NUMERO_NOTA_FISCAL: payload.property_values.find((p) => p.name === "Número da Nota")?.value,
+        up_VALOR: parseFloat(payload.property_values.find((p) => p.name === "Valor")?.value || 0).toFixed(2),
+        up_REQUISICAO: payload.property_values.find((p) => p.name === "Número da Requisição")?.value,
+      };
+      const response = await processApiRequest(payload, URL_DESPESAS, TOKEN_DESPESAS, connection, updateQueryParams);
+      if (response) {
+        apiResponses.push(response);
+      }
+    }
 
-            const responsavelConfig = {
-                method: 'post',
-                url: URL_USUARIO,
-                headers: {
-                    'api_token': TOKEN_DESPESAS,
-                    'Content-Type': 'application/json'
-                },
-                data: JSON.stringify(responsavelPayload)
-            };
-
-            let responsavelId;
-            try {
-                const responsavelResponse = await axios.request(responsavelConfig);
-                responsavelId = responsavelResponse.data.users[0]?.id || process.env.USUARIO_INTEGRACAO;
-            } catch (error) {
-                console.error("Erro ao pesquisar usuario responsável:", error.message);
-                responsavelId = process.env.USUARIO_INTEGRACAO;
-            }
-
-            if (typeof responsavelId === "undefined") {
-                responsavelId = process.env.USUARIO_INTEGRACAO;
-            }
-
-            targetJson.property_values.forEach(property => {
-                if (property.name === "responsavel") {
-                    property.value = responsavelId;
-                }
-            });
-            updatedJsonData.push(targetJson);
-        }
-
-        const apiResponses = [];
-        for (const payload of updatedJsonData) {
-            try {
-                let up_CNPJ;
-                let up_NUMERO_NOTA_FISCAL;
-                let up_VALOR;
-                let up_REQUISICAO;
-
-                for (const property of payload.property_values) {
-                    if (property.name === 'CNPJ') {
-                        up_CNPJ = property.value;
-                    } else if (property.name === 'Número da Nota') {
-                        up_NUMERO_NOTA_FISCAL = property.value;
-                    } else if (property.name === 'Valor') {
-                        up_VALOR = parseFloat(property.value).toFixed(2);
-                    } else if (property.name === 'Número da Requisição') {
-                        up_REQUISICAO = property.value;
-                    }
-                }
-
-                const response = await axios.post(URL_DESPESAS, payload, {
-                    headers: {
-                        'api_token': TOKEN_DESPESAS,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                apiResponses.push(response.data);
-
-                const updateQuery = `UPDATE AD_DESP_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = '${up_REQUISICAO}', DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND NUMERO_NOTA_FISCAL = ${up_NUMERO_NOTA_FISCAL} AND VALOR = ${up_VALOR}`;
-                const result = await connection.execute(updateQuery);
-                await connection.commit();
-            } catch (error) {
-                console.error('Erro ao enviar despesa:', error.message);
-                throw error;
-            }
-        }
-
-        const parsedResponses = apiResponses.map(response => ({
-            id: response.id,
-            createdAt: response.created_at,
-            identifier: response.identifier,
-            fluxo: response.name,
-            status: response.status
-        }));
-
-        const taskPromises = parsedResponses.map(parsedResponse => getTask(parsedResponse.id));
-        const taskResponses = await Promise.all(taskPromises);
-        //res.render("despesas", { title: nomeApp, parsedResponses: parsedResponses, message: "Envios concluidos" }); 
-        res.json({ title: nomeApp, parsedResponses: parsedResponses, message: "Envios concluidos" });
-
-    } catch (err) {
+    res.json({ title: NOME_APP, parsedResponses: apiResponses, message: "Envios concluidos" });
+  } catch (err) {
+    console.error(err.message);
+    res.json({ title: NOME_APP, message: "Error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (err) {
         console.error(err.message);
-        res.render("despesas", { title: nomeApp, message: "Error" });
-    } finally {
-        if (connection) {
-            try {
-                await connection.close();
-            } catch (err) {
-                console.error(err.message);
-            }
-        }
-        isLocked = false;
+      }
     }
+    isLocked = false;
+  }
 });
 
-router.get('/faturamento', async (_req, res) => {
-    res.render("faturamento", { title: nomeApp, message: null, parsedResponses: null });
+router.get("/faturamento", (_req, res) => {
+  res.render("faturamento", { title: NOME_APP, message: null, parsedResponses: null });
 });
 
-router.post('/faturamento', async (_req, res) => {
-    let connection;
-    try {
-        oracledb.initOracleClient({
-            libDir: process.env.LIB_DIR
-        });
+router.post("/faturamento", async (_req, res) => {
+  let connection;
+  try {
+    connection = await getConnection();
+    const result_query = await connection.execute(QUERY_FATURAMENTO);
+    const jsonData = result_query.rows.map((row) => {
+      const jsonObj = {};
+      result_query.metaData.forEach((meta, index) => {
+        jsonObj[meta.name.toLowerCase()] = row[index];
+      });
+      return jsonObj;
+    });
 
-        const connection = await oracledb.getConnection({
-            user: process.env.ORACLE_USER,
-            password: process.env.ORACLE_PASSWORD,
-            connectString: process.env.ORACLE_CONNECTION_STRING,
-        });
-        const query = process.env.QUERY_FATURAMENTO;
-        const result_query = await connection.execute(query);
-        const result_query_rows = result_query.rows;
-        const jsonData = result_query_rows.map(row => {
-            const jsonObj = {};
-            result_query.metaData.forEach((meta, index) => {
-                jsonObj[meta.name.toLowerCase()] = row[index];
-            });
-            return jsonObj;
-        });
+    const jsonTemplateFaturamento = require("./jsonTemplateFaturamento.js");
+    const updatedJsonData = await processRequestData(jsonData, jsonTemplateFaturamento, TOKEN_FATURAMENTO, URL_UPLOAD);
 
-        const jsonTemplateFaturamento = require('./jsonTemplateFaturamento.js');
+    const apiResponses = [];
+    for (const payload of updatedJsonData) {
+      const updateQueryParams = {
+        up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ")?.value,
+        up_NUMERO_NOTA_FISCAL: payload.property_values.find((p) => p.name === "Número da Nota")?.value,
+        up_VALOR: parseFloat(payload.property_values.find((p) => p.name === "Valor")?.value || 0).toFixed(2),
+        up_REQUISICAO: payload.property_values.find((p) => p.name === "Número da Requisição")?.value,
+      };
+      const response = await processApiRequest(payload, URL_FATURAMENTO, TOKEN_FATURAMENTO, connection, updateQueryParams);
+      if (response) {
+        apiResponses.push(response);
+      }
+    }
 
-        const updatedJsonData = [];
-        for (const data of jsonData) {
-            const targetJson = JSON.parse(JSON.stringify(jsonTemplateFaturamento));
-            targetJson.property_values.forEach(property => {
-                if (data.hasOwnProperty(property.value)) {
-                    property.value = data[property.value] || "";
-                } else {
-                    console.log(`Propriedade ${property.value} não encontrada:`, data);
-                }
-            });
-
-            const responsavel = data.responsavel;
-
-            const responsavelPayload = {
-                filters: [
-                    {
-                        field: "active",
-                        type: "istrue"
-                    },
-                    {
-                        field: "name",
-                        type: "match_phrase",
-                        value: responsavel,
-                        nested: false
-                    }
-                ],
-                sort_by: [
-                    "name",
-                    "asc"
-                ]
-            };
-
-            const responsavelConfig = {
-                method: 'post',
-                url: URL_USUARIO,
-                headers: {
-                    'api_token': TOKEN_FATURAMENTO,
-                    'Content-Type': 'application/json'
-                },
-                data: JSON.stringify(responsavelPayload)
-            };
-
-            let responsavelId;
-            try {
-                const responsavelResponse = await axios.request(responsavelConfig);
-                responsavelId = responsavelResponse.data.users[0]?.id || process.env.USUARIO_INTEGRACAO;
-            } catch (error) {
-                console.error("Error fetching responsavel ID:", error.message);
-                responsavelId = process.env.USUARIO_INTEGRACAO;
-            }
-
-            if (typeof responsavelId === "undefined") {
-                responsavelId = process.env.USUARIO_INTEGRACAO;
-            }
-
-            targetJson.property_values.forEach(property => {
-                if (property.name === "responsavel") {
-                    property.value = responsavelId;
-                }
-            });
-
-            updatedJsonData.push(targetJson);
-
-        }
-
-        const apiResponses = [];
-        for (const payload of updatedJsonData) {
-            try {
-                let up_CNPJ;
-                let up_NRO_PROPOSTA;
-                let up_CLIENTE;
-
-                for (const property of payload.property_values) {
-                    if (property.name === 'CNPJ_CPF') {
-                        up_CNPJ = property.value.trim() === '' ? null : property.value;
-                    } else if (property.name === 'NRO_PROPOSTA') {
-                        up_NRO_PROPOSTA = property.value;
-                    } else if (property.name === 'CLIENTE') {
-                        up_CLIENTE = property.value;
-                    }
-                }
-
-                const response = await axios.post(URL_FATURAMENTO, payload, {
-                    headers: {
-                        'api_token': TOKEN_FATURAMENTO,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                apiResponses.push(response.data);
-
-                const updateQuery = `UPDATE AD_FAT_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || PROPOSTA , DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND PROPOSTA = '${up_NRO_PROPOSTA}' AND NOME_CLIENTE = '${up_CLIENTE}'`;
-                const result = await connection.execute(updateQuery);
-                await connection.commit();
-            } catch (error) {
-                console.error('Erro ao enviar faturamento:', error.message);
-                throw error;
-            }
-        }
-
-        const parsedResponses = apiResponses.map(response => ({
-            id: response.id,
-            createdAt: response.created_at,
-            identifier: response.identifier,
-            fluxo: response.name,
-            status: response.status
-        }));
-
-        const taskPromises = parsedResponses.map(parsedResponse => getTask(parsedResponse.id));
-        const taskResponses = await Promise.all(taskPromises);
-        // res.render("faturamento", { title: nomeApp, parsedResponses: parsedResponses, message: "Envios concluidos" });
-        res.json({ title: nomeApp, parsedResponses: parsedResponses, message: "Envios concluidos" });
-
-    } catch (err) {
+    res.json({ title: NOME_APP, parsedResponses: apiResponses, message: "Envios concluidos" });
+  } catch (err) {
+    console.error(err.message);
+    res.json({ title: NOME_APP, message: "Error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (err) {
         console.error(err.message);
-        res.render("faturamento", { title: nomeApp, message: "Error" });
-    } finally {
-        if (connection) {
-            try {
-                await connection.close();
-            } catch (err) {
-                console.error(err.message);
-            }
-        }
+      }
     }
+  }
 });
 
-
-router.get('/pgtorh', async (_req, res) => {
-    res.render("pgtorh", { title: nomeApp, message: null, parsedResponses: null });
+router.get("/pgtoRH", (_req, res) => {
+  res.render("pgtoRH", { title: NOME_APP, message: null, parsedResponses: null });
 });
 
-router.post('/pgtorh', async (_req, res) => {
-    let connection;
-    try {
-        oracledb.initOracleClient({
-            libDir: process.env.LIB_DIR
-        });
+router.post("/pgtoRH", async (_req, res) => {
+  let connection;
+  try {
+    connection = await getConnection();
+    const result_query = await connection.execute(QUERY_PGTORH);
+    const jsonData = result_query.rows.map((row) => {
+      const jsonObj = {};
+      result_query.metaData.forEach((meta, index) => {
+        jsonObj[meta.name.toLowerCase()] = row[index];
+      });
+      return jsonObj;
+    });
 
-        const connection = await oracledb.getConnection({
-            user: process.env.ORACLE_USER,
-            password: process.env.ORACLE_PASSWORD,
-            connectString: process.env.ORACLE_CONNECTION_STRING,
-        });
-        const query = process.env.QUERY_PGTORH;
-        const result_query = await connection.execute(query);
-        const result_query_rows = result_query.rows;
-        const jsonData = result_query_rows.map(row => {
-            const jsonObj = {};
-            result_query.metaData.forEach((meta, index) => {
-                jsonObj[meta.name.toLowerCase()] = row[index];
-            });
-            return jsonObj;
-        });
+    const jsonTemplatePagamentoRH = require("./jsonTemplatePgtoRH.js");
+    const updatedJsonData = await processRequestData(jsonData, jsonTemplatePagamentoRH, TOKEN_DESPESASRH, URL_UPLOAD, USAGE_ID_PGTORH);
 
-        const jsonTemplatePgtoRH = require('./jsonTemplatePgtoRH.js');
+    const apiResponses = [];
+    for (const payload of updatedJsonData) {
+      const updateQueryParams = {
+        up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ")?.value,
+        up_NUMERO_NOTA_FISCAL: payload.property_values.find((p) => p.name === "Número da Nota")?.value,
+        up_VALOR: parseFloat(payload.property_values.find((p) => p.name === "Valor")?.value || 0).toFixed(2),
+        up_REQUISICAO: payload.property_values.find((p) => p.name === "Número da Requisição")?.value,
+      };
+      const response = await processApiRequest(payload, URL_PGTORH, TOKEN_DESPESASRH, connection, updateQueryParams);
+      if (response) {
+        apiResponses.push(response);
+      }
+    }
 
-        const updatedJsonData = [];
-        for (const data of jsonData) {
-            const targetJson = JSON.parse(JSON.stringify(jsonTemplatePgtoRH));
-            targetJson.property_values.forEach(property => {
-                if (data.hasOwnProperty(property.value)) {
-                    property.value = data[property.value] || "";
-                } else {
-                    console.log(`Propriedade ${property.value} não encontrada:`, data);
-                }
-            });
-
-            if (data.pdf) {
-                try {
-                    const pastaBoleto = data.pasta_boleto.replace(/\s/g, '');
-                    const filePath = (pastaBoleto + '\\' + data.pdf);
-                    const fileName = data.pdf;
-
-                    try {
-
-                        const file = filePath;
-                        const data = await new Promise((resolve, reject) => {
-                            fs.readFile(file, (err, data) => {
-                                if (err) {
-                                    console.error('Erro ao ler arquivo:', err);
-                                    reject(err);
-                                } else {
-                                    const base64_content = Buffer.from(data).toString('base64');
-
-                                    resolve(`{\n    "index": false,\n    "document": {\n"filename": "${fileName}",\n "base64_file": "${base64_content}" \n    }\n}`);
-                                }
-                            });
-                        });
-
-
-                        const config = {
-                            method: 'post',
-                            maxBodyLength: Infinity,
-                            url: URL_UPLOAD,
-                            headers: {
-                                'api_token': TOKEN_DESPESASRH,
-                                'Content-Type': 'application/json',
-                            },
-                            data: data
-                        };
-
-                        const response = await axios.request(config);
-                        const pdfId = response.data.id;
-                        targetJson.documents = [{ "usage_id": USAGE_ID_PGTORH, "file_id": pdfId }];
-                    } catch (err) {
-                        console.error(err.message);
-                    }
-
-                } catch (error) {
-                    console.error('Erro ao enviar PDF:', error.message);
-                }
-            }
-            const responsavel = data.responsavel;
-
-            const responsavelPayload = {
-                filters: [
-                    {
-                        field: "active",
-                        type: "istrue"
-                    },
-                    {
-                        field: "name",
-                        type: "match_phrase",
-                        value: responsavel,
-                        nested: false
-                    }
-                ],
-                sort_by: [
-                    "name",
-                    "asc"
-                ]
-            };
-
-            const responsavelConfig = {
-                method: 'post',
-                url: URL_USUARIO,
-                headers: {
-                    'api_token': TOKEN_DESPESASRH,
-                    'Content-Type': 'application/json'
-                },
-                data: JSON.stringify(responsavelPayload)
-            };
-
-            let responsavelId;
-            try {
-                const responsavelResponse = await axios.request(responsavelConfig);
-                responsavelId = responsavelResponse.data.users[0]?.id || process.env.USUARIO_INTEGRACAO;
-            } catch (error) {
-                console.error("Erro ao pesquisar usuario responsável:", error.message);
-                responsavelId = process.env.USUARIO_INTEGRACAO;
-            }
-
-            if (typeof responsavelId === "undefined") {
-                responsavelId = process.env.USUARIO_INTEGRACAO;
-            }
-
-            targetJson.property_values.forEach(property => {
-                if (property.name === "responsavel") {
-                    property.value = responsavelId;
-                }
-            });
-            updatedJsonData.push(targetJson);
-        }
-
-        const apiResponses = [];
-        for (const payload of updatedJsonData) {
-            try {
-                let up_CNPJ;
-                let up_NUMERO_NOTA_FISCAL;
-                let up_VALOR;
-                let up_REQUISICAO;
-
-                for (const property of payload.property_values) {
-                    if (property.name === 'CNPJ') {
-                        up_CNPJ = property.value;
-                    } else if (property.name === 'Número da Nota') {
-                        up_NUMERO_NOTA_FISCAL = property.value;
-                    } else if (property.name === 'Valor') {
-                        up_VALOR = parseFloat(property.value).toFixed(2);
-                    } else if (property.name === 'Número da Requisição') {
-                        up_REQUISICAO = property.value;
-                    }
-                }
-                console.log(payload)
-                const response = await axios.post(URL_PGTORH, payload, {
-                    headers: {
-                        'api_token': TOKEN_DESPESASRH,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                apiResponses.push(response.data);
-
-                const updateQuery = `UPDATE AD_DESP_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = '${up_REQUISICAO}', DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND NUMERO_NOTA_FISCAL = ${up_NUMERO_NOTA_FISCAL} AND VALOR = ${up_VALOR}`;
-                const result = await connection.execute(updateQuery);
-                await connection.commit();
-            } catch (error) {
-                console.error('Erro ao enviar pagamento RH:', error.message);
-                throw error;
-            }
-        }
-
-        const parsedResponses = apiResponses.map(response => ({
-            id: response.id,
-            createdAt: response.created_at,
-            identifier: response.identifier,
-            fluxo: response.name,
-            status: response.status
-        }));
-
-        const taskPromises = parsedResponses.map(parsedResponse => getTask(parsedResponse.id));
-        const taskResponses = await Promise.all(taskPromises);
-        //res.render("pgtorh", { title: nomeApp, parsedResponses: parsedResponses, message: "Envios concluidos" });
-        res.json({ title: nomeApp, parsedResponses: parsedResponses, message: "Envios concluidos" });
-
-    } catch (err) {
+    res.json({ title: NOME_APP, parsedResponses: apiResponses, message: "Envios concluidos" });
+  } catch (err) {
+    console.error(err.message);
+    res.json({ title: NOME_APP, message: "Error" });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (err) {
         console.error(err.message);
-        res.render("pgtorh", { title: nomeApp, message: "Error" });
-    } finally {
-        if (connection) {
-            try {
-                await connection.close();
-            } catch (err) {
-                console.error(err.message);
-            }
-        }
+      }
     }
+  }
 });
 
 module.exports = router;

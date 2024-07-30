@@ -62,9 +62,6 @@ Para iniciar o aplicativo web é utilizado o modulo PM2:
     pm2 logs integrador
    ```
 
-## TO-DO
-
-Refatoração do código.
 
 ## Licença
 
