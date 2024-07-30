@@ -41,23 +41,28 @@ Assim como o start_event que é unico para cada endpoint.
 
 Para iniciar o aplicativo web é utilizado o modulo PM2:
 
-1. **Iniciar o Aplicativo**:
+1. **Instalar o PM2**:
+   ```sh
+   npm install pm2 -g
+   ```
+
+2. **Iniciar o Aplicativo**:
    ```sh
    pm2 start app.js --name "integrador"
    ```
-2. **Verificar Lista do PM2**:
+3. **Verificar Lista do PM2**:
    ```sh
     pm2 list
    ```
-3. **Configurar PM2 para Iniciar no Boot**:
+4. **Configurar PM2 para Iniciar no Boot**:
    ```sh
     pm2 startup
    ```
-4. **Salvar a Lista de Processos do PM2**:
+5. **Salvar a Lista de Processos do PM2**:
    ```sh
     pm2 save
    ```
-5. **Visualizar Logs**:
+6. **Visualizar Logs**:
    ```sh
     pm2 logs integrador
    ```
