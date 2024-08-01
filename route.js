@@ -77,7 +77,7 @@ const fetchResponsavelId = async (responsavel, token) => {
   }
 };
 
-const processApiRequest = async (payload, url, token, connection, updateQueryParams) => {
+const processApiRequest = async (payload, url, token, connection, updateQueryParams, endpointType) => {
   try {
     const response = await axios.post(url, payload, {
       headers: {
@@ -87,11 +87,23 @@ const processApiRequest = async (payload, url, token, connection, updateQueryPar
     });
 
     if (response.status === 200) {
-      const { up_CNPJ, up_NUMERO_NOTA_FISCAL, up_VALOR, up_REQUISICAO } = updateQueryParams;
-      const updateQuery = `UPDATE AD_DESP_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = '${up_REQUISICAO}', DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND NUMERO_NOTA_FISCAL = ${up_NUMERO_NOTA_FISCAL} AND VALOR = ${up_VALOR}`;
+      let updateQuery = "";
+
+      if (endpointType === "faturamento") {
+        const { up_CNPJ, up_NRO_PROPOSTA, up_CLIENTE } = updateQueryParams;
+        updateQuery = `UPDATE AD_FAT_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = TO_CHAR(SYSDATE, 'YYYYMMDDHH24MISS') || PROPOSTA, DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND PROPOSTA = '${up_NRO_PROPOSTA}' AND NOME_CLIENTE = '${up_CLIENTE}'`;
+      } else if (endpointType === "despesas" || endpointType === "pgto_RH") {
+        const { up_CNPJ, up_NUMERO_NOTA_FISCAL, up_VALOR, up_REQUISICAO } = updateQueryParams;
+        updateQuery = `UPDATE AD_DESP_HOLMES SET STATUS_LANC_HOLMES = 'S', REQUISICAO = '${up_REQUISICAO}', DATA_LANC_HOLMES = SYSDATE WHERE STATUS_LANC_HOLMES = 'N' AND CNPJ_CPF = '${up_CNPJ}' AND NUMERO_NOTA_FISCAL = ${up_NUMERO_NOTA_FISCAL} AND VALOR = ${up_VALOR}`;
+      } else {
+        throw new Error(`Endpoint desconhecido: ${endpointType}`);
+      }
+
       await connection.execute(updateQuery);
+	  console.log(updateQuery)
       await connection.commit();
       return response.data;
+
     } else {
       const errorMsg = `Erro ao enviar: ${response.status}, Status text: ${response.statusText}\n`;
       console.error(errorMsg);
@@ -196,14 +208,17 @@ router.post("/despesas", async (_req, res) => {
     const updatedJsonData = await processRequestData(jsonData, jsonTemplateDespesas, TOKEN_DESPESAS, URL_UPLOAD, USAGE_ID_DESPESA);
 
     const apiResponses = [];
+
     for (const payload of updatedJsonData) {
+      let endpointType;
       const updateQueryParams = {
         up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ")?.value,
         up_NUMERO_NOTA_FISCAL: payload.property_values.find((p) => p.name === "Número da Nota")?.value,
         up_VALOR: parseFloat(payload.property_values.find((p) => p.name === "Valor")?.value || 0).toFixed(2),
         up_REQUISICAO: payload.property_values.find((p) => p.name === "Número da Requisição")?.value,
       };
-      const response = await processApiRequest(payload, URL_DESPESAS, TOKEN_DESPESAS, connection, updateQueryParams);
+	  endpointType = "despesas"
+      const response = await processApiRequest(payload, URL_DESPESAS, TOKEN_DESPESAS, connection, updateQueryParams, endpointType);
       if (response) {
         apiResponses.push(response);
       }
@@ -247,13 +262,14 @@ router.post("/faturamento", async (_req, res) => {
 
     const apiResponses = [];
     for (const payload of updatedJsonData) {
+      let endpointType;
       const updateQueryParams = {
-        up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ")?.value,
-        up_NUMERO_NOTA_FISCAL: payload.property_values.find((p) => p.name === "Número da Nota")?.value,
-        up_VALOR: parseFloat(payload.property_values.find((p) => p.name === "Valor")?.value || 0).toFixed(2),
-        up_REQUISICAO: payload.property_values.find((p) => p.name === "Número da Requisição")?.value,
+        up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ_CPF")?.value,
+        up_NRO_PROPOSTA: payload.property_values.find((p) => p.name === "NRO_PROPOSTA")?.value,
+        up_CLIENTE: payload.property_values.find((p) => p.name === "Valor")?.value,
       };
-      const response = await processApiRequest(payload, URL_FATURAMENTO, TOKEN_FATURAMENTO, connection, updateQueryParams);
+	  endpointType = "faturamento"
+      const response = await processApiRequest(payload, URL_FATURAMENTO, TOKEN_FATURAMENTO, connection, updateQueryParams, endpointType);
       if (response) {
         apiResponses.push(response);
       }
@@ -296,13 +312,15 @@ router.post("/pgtoRH", async (_req, res) => {
 
     const apiResponses = [];
     for (const payload of updatedJsonData) {
+      let endpointType;
       const updateQueryParams = {
         up_CNPJ: payload.property_values.find((p) => p.name === "CNPJ")?.value,
         up_NUMERO_NOTA_FISCAL: payload.property_values.find((p) => p.name === "Número da Nota")?.value,
         up_VALOR: parseFloat(payload.property_values.find((p) => p.name === "Valor")?.value || 0).toFixed(2),
         up_REQUISICAO: payload.property_values.find((p) => p.name === "Número da Requisição")?.value,
       };
-      const response = await processApiRequest(payload, URL_PGTORH, TOKEN_DESPESASRH, connection, updateQueryParams);
+	  endpointType = "pgto_RH"
+      const response = await processApiRequest(payload, URL_PGTORH, TOKEN_DESPESASRH, connection, updateQueryParams, endpointType);
       if (response) {
         apiResponses.push(response);
       }

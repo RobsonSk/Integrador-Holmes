@@ -108,7 +108,7 @@ BEGIN
                FMC.SERIE_NOTA_FISCAL,
                FMC.CONTADOR,
                FMC.CLIENTE,
-               GU.NOME
+               CASE WHEN FMC.TIPO_TRANSACAO = 'D14' THEN 'SANDRA MIGUEL DA SILVA' ELSE GU.NOME END AS RESPONSAVEL
           INTO V_EMPRESA,
                V_REVENDA,
                V_ESTABELECIMENTO,
